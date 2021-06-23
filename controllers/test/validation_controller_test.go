@@ -27,11 +27,13 @@ var _ = Describe("Validation controller", func() {
 			version := pipeline.Status.PipelineVersion
 			i.SyncHosts(version, 3)
 
-			dbCount, err := i.DbClient.CountHosts()
+			now := time.Now().UTC()
+
+			dbCount, err := i.DbClient.CountHosts(now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(dbCount).To(Equal(3))
 
-			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version))
+			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version), now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(esCount).To(Equal(3))
 
@@ -151,11 +153,13 @@ var _ = Describe("Validation controller", func() {
 			i.SyncHosts(version, 5)
 			i.InsertSimpleHost()
 
-			dbCount, err := i.DbClient.CountHosts()
+			now := time.Now().UTC()
+
+			dbCount, err := i.DbClient.CountHosts(now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(dbCount).To(Equal(6))
 
-			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version))
+			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version), now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(esCount).To(Equal(5))
 
@@ -181,11 +185,13 @@ var _ = Describe("Validation controller", func() {
 			i.SyncHosts(version, 5)
 			i.InsertSimpleHost()
 
-			dbCount, err := i.DbClient.CountHosts()
+			now := time.Now().UTC()
+
+			dbCount, err := i.DbClient.CountHosts(now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(dbCount).To(Equal(6))
 
-			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version))
+			esCount, err := i.EsClient.CountIndex(i.EsClient.ESIndexName(version), now)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(esCount).To(Equal(5))
 
@@ -389,7 +395,7 @@ var _ = Describe("Validation controller", func() {
 			recorder, _ := i.ValidationReconciler.Recorder.(*record.FakeRecorder)
 			Expect(recorder.Events).To(HaveLen(3))
 			msg := <-recorder.Events
-			Expect(msg).To(Equal("Normal CountValidationPassed Results: mismatchRatio: 0.16666666666666666, esCount: 5, hbiCount: 6"))
+			Expect(msg).To(Equal("Normal CountValidationPassed Results: mismatchRatio: 0, esCount: 5, hbiCount: 5"))
 			msg = <-recorder.Events
 			Expect(msg).To(Equal("Normal IDValidationPassed 0 hosts ids do not match. Number of hosts IDs retrieved: HBI: 5, ES: 5"))
 			msg = <-recorder.Events
@@ -520,6 +526,36 @@ var _ = Describe("Validation controller", func() {
 			Expect(msg).To(Equal("Normal IDValidationPassed 0 hosts ids do not match. Number of hosts IDs retrieved: HBI: 6, ES: 6"))
 			msg = <-recorder.Events
 			Expect(msg).To(Equal("Normal FullValidationFailed 1 hosts do not match. 6 hosts validated."))
+		})
+	})
+
+	Describe("Tag validation", func() {
+		It("Fails when tag structured namespace is inconsistent", func() {
+			i.fullValidationFailureTest("simple", "tags-structured-namespace-modified")
+		})
+
+		It("Fails when tag structured key is inconsistent", func() {
+			i.fullValidationFailureTest("simple", "tags-structured-key-modified")
+		})
+
+		It("Fails when tag structured value is inconsistent", func() {
+			i.fullValidationFailureTest("simple", "tags-structured-value-modified")
+		})
+
+		It("Fails when tag string inconsistent", func() {
+			i.fullValidationFailureTest("simple", "tags-string-modified")
+		})
+
+		It("Validates complex, unordered tags", func() {
+			pipeline := i.CreateValidPipeline()
+			i.AssertValidationEvents(0)
+
+			hostId := i.InsertHostNow("tags-multiple-unordered")
+			i.IndexDocumentNow(pipeline.Status.PipelineVersion, hostId, "tags-multiple-unordered")
+
+			pipeline = i.ReconcileValidation()
+			Expect(pipeline.GetState()).To(Equal(xjoin.STATE_VALID))
+			Expect(pipeline.GetValid()).To(Equal(metav1.ConditionTrue))
 		})
 	})
 })

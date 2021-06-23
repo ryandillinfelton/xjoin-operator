@@ -4,18 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"github.com/elastic/go-elasticsearch/v7/esapi"
 	"github.com/redhatinsights/xjoin-operator/controllers/data"
 	"io/ioutil"
+	"sort"
+	"strings"
 	"time"
 )
 
-func (es *ElasticSearch) GetHostsByIds(index string, hostIds []string) ([]data.Host, error) {
+func (es *ElasticSearch) GetHostsByIds(index string, hostIds []string, endTime time.Time) ([]data.Host, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
 
 	var query QueryHostsById
-	query.Query.IDs.Values = hostIds
+	query.Query.Bool.Filter.IDs.Values = hostIds
+	query.Query.Bool.Must.Range.ModifiedOn.Lt = endTime.Format(time.RFC3339)
 	reqJSON, err := json.Marshal(query)
 	requestSize := len(hostIds)
 
@@ -30,13 +35,37 @@ func (es *ElasticSearch) GetHostsByIds(index string, hostIds []string) ([]data.H
 	if err != nil {
 		return nil, err
 	}
+	if searchRes.StatusCode >= 400 {
+		bodyBytes, _ := ioutil.ReadAll(searchRes.Body)
+
+		return nil, errors.New(fmt.Sprintf(
+			"invalid response code when getting hosts by id. StatusCode: %v, Body: %s",
+			searchRes.StatusCode, bodyBytes))
+	}
 
 	hosts, err := parseSearchHostsResponse(searchRes)
 	if err != nil {
 		return nil, err
 	}
 
+	hosts = sortHostFields(hosts)
+
 	return hosts, nil
+}
+
+func sortHostFields(hosts []data.Host) []data.Host {
+	for i, host := range hosts {
+		//java's encoder (used in the flattenlist SMT) doesn't encode * but the golang encoder does
+		for k := range hosts[i].TagsString {
+			hosts[i].TagsString[k] = strings.ReplaceAll(hosts[i].TagsString[k], "*", "%2A")
+		}
+
+		data.OrderedBy(data.NamespaceComparator, data.KeyComparator, data.ValueComparator).Sort(host.TagsStructured)
+		sort.Strings(host.TagsSearch)
+		sort.Strings(host.TagsString)
+	}
+
+	return hosts
 }
 
 func (es *ElasticSearch) GetHostIDs(index string, start time.Time, end time.Time) ([]string, error) {
@@ -56,6 +85,8 @@ func (es *ElasticSearch) GetHostIDs(index string, start time.Time, end time.Time
 		Size:   size,
 		Sort:   []string{"_doc"},
 	}
+
+	log.Info("ElasticSearch.GetHostIDsQuery", "query", searchReq, "body", query)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*60)
 	defer cancel()
