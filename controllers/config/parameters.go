@@ -252,6 +252,18 @@ func NewXJoinConfiguration() Parameters {
 						},
 						"tags_search": {
 							"type": "keyword"
+						},
+						"per_reporter_staleness_string": {
+							"type": "keyword"
+						},
+						"per_reporter_staleness": {
+							"type": "nested",
+							"properties": {
+								"reporter": {"type": "keyword"},
+								"last_check_in": {"type": "keyword"},
+								"stale_timestamp": {"type": "date-nanos"},
+								"check_in_succeeded": {"type": "boolean"}
+							}
 						}
 					}
 				}
@@ -291,6 +303,11 @@ func NewXJoinConfiguration() Parameters {
 				"transforms.flattenListString.mode": "join",
 				"transforms.flattenListString.delimiterJoin": "/",
 				"transforms.flattenListString.encode": true,
+				"transforms.flattenListPRS.type": "com.redhat.insights.flattenlistsmt.FlattenList$Value",
+				"transforms.flattenListPRS.sourceField": "per_reporter_staleness_string",
+				"transforms.flattenListPRS.outputField": "per_reporter_staleness",
+				"transforms.flattenListPRS.mode": "keys",
+				"transforms.flattenList.keys": "reporter,last_check_in,stale_timestamp,check_in_succeeded",
 				"transforms.renameTopic.type": "org.apache.kafka.connect.transforms.RegexRouter",
 				"transforms.renameTopic.regex": "{{.Topic}}",
 				"transforms.renameTopic.replacement": "{{.RenameTopicReplacement}}",
