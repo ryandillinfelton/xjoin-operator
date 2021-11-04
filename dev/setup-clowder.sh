@@ -38,9 +38,11 @@ fi
 rm -r /tmp/kubesetup
 cd "$CURRENT_DIR" || exit 1
 
+kubectl set env deployment/strimzi-cluster-operator -n strimzi STRIMZI_IMAGE_PULL_SECRETS=cloudservices-pull-secret
+
 # clowder CRDs
 print_start_message "Installing Clowder CRDs"
-kubectl apply -f https://github.com/RedHatInsights/clowder/releases/download/v0.20.0/clowder-manifest-v0.20.0.yaml --validate=false
+kubectl apply -f https://github.com/RedHatInsights/clowder/releases/download/v0.21.0/clowder-manifest-v0.21.0.yaml --validate=false
 
 # project and secrets
 print_start_message "Setting up pull secrets"
